@@ -305,7 +305,7 @@ def find_strictly_red_region(pil_img, grid_size=10, red_threshold=50, dominance_
                 for j in range(y, min(y + grid_size, height)):
                     # Check if the pixel is distinctly red.
                     r, g, b = img.getpixel((i, j))
-                    if r > red_threshold and r > dominance_factor * max(g, b):
+                    if b > red_threshold and b > dominance_factor * max(g, r):
                         red_count += 1
 
             # Update the maximum and coordinates if this block has more distinctly red pixels than the current maximum
@@ -380,23 +380,63 @@ coordinates_lock = threading.Lock()
 
 def on_click(x, y, button, pressed):
     global last_x_y
+    global lastCords
+
+    if last_x_y == (0, 0):
+        return
+
+    if last_x_y == (x, y):
+        print(f"Click at same location as last click, skipping")
+        return
+
     if pressed:
         with coordinates_lock:
             # Update the global variable with the click coordinates on mouse press
             last_x_y = (x, y)
+            lastCords = (0, 0, 0, 0)
             print(f"Global click at: {last_x_y}")
+
+
 
 def start_mouse_listener():
     # Start the event listener
     with mouse.Listener(on_click=on_click) as listener:
         listener.join()
 
+
+def blackout_except_near(img, box_coords, distance):
+    """
+    Black out all pixels in the image except those close to the specified coordinates.
+
+    :param image_path: Path to the image file.
+    :param target_coords: A tuple of (x, y) coordinates close to which pixels will not be blacked out.
+    :param distance: Maximum distance from target_coords for pixels not to be blacked out.
+    """
+    pixels = img.load()
+    width, height = img.size
+
+
+    print(f"Box coords: {box_coords}")
+
+    # Iterate through each pixel
+    for y in range(height):
+        for x in range(width):
+            # Calculate the distance between the current pixel and the target coordinates
+            dist = math.sqrt((x - box_coords[0]) ** 2 + (y - box_coords[1]) ** 2)
+            # If the distance is greater than the specified distance, black out the pixel
+            if dist > distance:
+                pixels[x, y] = (255, 255, 255)
+
+    return img
+
+
+
 # Create and start the mouse listener thread
 listener_thread = threading.Thread(target=start_mouse_listener)
 listener_thread.start()
 
 last_x_y = (0, 0)
-
+lastCords = (0, 0, 0, 0)
 
 
 
@@ -418,22 +458,18 @@ def main():
             width, height = 515, 262
             region = (window.left + window.width - width, window.top, width, height)
 
-
-
-
-
             screenshot = pyautogui.screenshot(region=region)
-            screenshotbefore = pyautogui.screenshot(region=region)
+            # screenshotbefore = pyautogui.screenshot(region=region)
 
-            screenshot.save('maot_modified.png')
+            # screenshot.save('maot_modified.png')
             modified_image = remove_pixels_right_of_color(screenshot, (40, 40, 40))  # Modify the image
-            modified_image.save('modified_1.png')
+            # modified_image.save('modified_1.png')
             modified_image = remove_pixels_right_of_color(screenshot, (47, 47, 47))  # Modify the image
-            modified_image.save('modified_2.png')
+            # modified_image.save('modified_2.png')
             modified_image = remove_pixels_right_of_color(modified_image, (30, 30, 30))  # Modify the image
-            modified_image.save('modified_3.png')
+            # modified_image.save('modified_3.png')
             set_pixel_to_same_color_as_pixel_over_or_under_if_black(modified_image)  # Modify the image
-            modified_image.save('modified_4__.png')
+            # modified_image.save('modified_4__.png')
             is_extended = over_half_of_pixels_are_black(modified_image)  # Check if the image is extended
 
 
@@ -441,47 +477,48 @@ def main():
             if is_extended == False:
                 modified_image, _bbox2 = crop_image_to_width_from_right(modified_image, 240)
                 bbox2 = _bbox2
-                modified_image.save('modified_4_5.png')
+                # modified_image.save('modified_4_5.png')
 
             # modified_image = crop_black_areas(modified_image)
             modified_image = remove_black_pixels_pil(modified_image)
-            modified_image.save('modified_5.png')
+            # modified_image.save('modified_5.png')
             modified_image, bbox = crop_transparent_background_pil(modified_image)
-            modified_image.save('modified_6.png')
+            # modified_image.save('modified_6.png')
 
 
 
-            modified_image = add_center_circle_to_pil(modified_image, 200)
+            modified_image = add_center_circle_to_pil(modified_image, 80)
             modified_image.save('modified_7.png')
-            modified_image = blacken_outside_circle(modified_image, 103)
+            modified_image = blacken_outside_circle(modified_image, 43)
             modified_image.save('modified_8.png')
 
-            cords = find_strictly_red_region(modified_image, min_red_pixels=5)
+
+            # Black out all pixels except those close to the center of the image
+            if lastCords != (0, 0, 0, 0):
+                modified_image = blackout_except_near( modified_image, lastCords, 30)
+            modified_image.save('modified_8.5.png')
+
+            cords = find_strictly_red_region(modified_image, min_red_pixels=1)
 
             if cords == None:
                 continue
 
-            preview_image = draw_blue_box(modified_image, cords)
-            preview_image.save('preview_1.png')
+            #preview_image = draw_blue_box(modified_image, cords)
+            # preview_image.save('preview_1.png')
 
             org_cords = find_original_coordinates(cords, bbox)
 
             if bbox2 is not None:
                 org_cords = find_original_coordinates(org_cords, bbox2)
 
-            preview_image3 = draw_blue_box(screenshotbefore, org_cords)
-            preview_image3.save('preview_3.png')
+            #preview_image3 = draw_blue_box(screenshotbefore, org_cords)
+            # preview_image3.save('preview_3.png')
 
             screen_cords = (org_cords[0] + window.left + window.width - width, org_cords[1] + window.top, org_cords[2] + window.left + window.width - width, org_cords[3] + window.top)
 
-            screenimg = pyautogui.screenshot()
-
-            screenimg = draw_blue_box(screenimg, screen_cords)
-            screenimg.save('screen_2.png')
-
-
-
-
+            #screenimg = pyautogui.screenshot()
+            #screenimg = draw_blue_box(screenimg, screen_cords)
+            # screenimg.save('screen_2.png')
 
 
 
@@ -498,9 +535,12 @@ def main():
                 print(f"Last cords: {last_x_y}")
 
                 if last_x_y != (0,0):
-                    if coords_are_not_close(last_x_y[0], last_x_y[1], x, y, 40):
+                    if coords_are_not_close(last_x_y[0], last_x_y[1], x, y, 30):
                         continue
+
                 last_x_y = (x, y)
+                lastCords = cords
+
                 pydirectinput.click(x, y)
 
 
@@ -514,7 +554,7 @@ if __name__ == "__main__":
     print("Starting RuneLite Auto Clicker")
     while True:
         # Set random delay between 0.5 and 1 second
-        delay = np.random.uniform(0.5, 1)
+        delay = np.random.uniform(0.4, 0.6)
         main()
         pyautogui.sleep(delay)
 
